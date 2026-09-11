@@ -13,7 +13,11 @@ export function handleAdmin(): Response {
   return new Response(ADMIN_HTML, {
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store"
+      "cache-control": "no-store",
+      "content-security-policy": "frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
+      "permissions-policy": "camera=(), microphone=(), geolocation=()",
+      "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff"
     }
   });
 }
@@ -23,7 +27,11 @@ export function handleStarmap(): Response {
   return new Response(STARMAP_HTML, {
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "cache-control": "no-store"
+      "cache-control": "no-store",
+      "content-security-policy": "frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
+      "permissions-policy": "camera=(), microphone=(), geolocation=()",
+      "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff"
     }
   });
 }

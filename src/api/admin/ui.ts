@@ -16,9 +16,18 @@ tailwind = {
   }
 };
 </script>
-<script src="https://cdn.tailwindcss.com"></script>
-<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+try {
+  const legacyToken = localStorage.getItem('aelios.admin.apiKey');
+  if (legacyToken && !sessionStorage.getItem('aelios.admin.apiKey')) {
+    sessionStorage.setItem('aelios.admin.apiKey', legacyToken);
+  }
+  localStorage.removeItem('aelios.admin.apiKey');
+} catch (error) {}
+</script>
+<script src="https://cdn.tailwindcss.com/3.4.17" referrerpolicy="no-referrer"></script>
+<script defer src="https://unpkg.com/alpinejs@3.14.9/dist/cdn.min.js" referrerpolicy="no-referrer"></script>
+<script src="https://unpkg.com/lucide@0.468.0" referrerpolicy="no-referrer"></script>
 <script>
 document.documentElement.dataset.theme = localStorage.getItem('aelios.admin.colorMode') || 'light';
 </script>
@@ -279,7 +288,7 @@ document.documentElement.dataset.theme = localStorage.getItem('aelios.admin.colo
             <i data-lucide="trash-2" class="h-4 w-4"></i>
           </button>
         </div>
-        <div class="mt-1 text-[11px]" :class="tokenSaved() ? 'text-zinc-500' : 'text-coral'" x-text="tokenSaved() ? 'Token 已保存到本机' : 'Token 尚未保存'"></div>
+        <div class="mt-1 text-[11px]" :class="tokenSaved() ? 'text-zinc-500' : 'text-coral'" x-text="tokenSaved() ? 'Token 仅保存到当前浏览器标签页' : 'Token 尚未保存'"></div>
         <p class="mt-3 text-xs text-zinc-400">当前空间：<span x-text="namespace"></span></p>
       </div>
     </aside>
@@ -1025,8 +1034,21 @@ document.documentElement.dataset.theme = localStorage.getItem('aelios.admin.colo
               <i data-lucide="trash-2" class="h-4 w-4"></i>
             </button>
           </div>
-          <div class="mt-1 text-[11px]" :class="tokenSaved() ? 'text-zinc-500' : 'text-coral'" x-text="tokenSaved() ? 'Token 已保存到本机' : 'Token 尚未保存'"></div>
+          <div class="mt-1 text-[11px]" :class="tokenSaved() ? 'text-zinc-500' : 'text-coral'" x-text="tokenSaved() ? 'Token 仅保存到当前浏览器标签页' : 'Token 尚未保存'"></div>
           <p class="mt-4 text-xs text-zinc-400">查看空间请使用页面顶部的助手选择器。</p>
+        </article>
+        <article class="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 shadow-sm">
+          <h2 class="text-sm font-semibold text-zinc-100">导入记忆种子</h2>
+          <p class="mt-2 text-xs leading-5 text-zinc-400">选择本机 JSONL 文件。文件先在浏览器里解析，确认后才逐条写入当前空间；文件内容不会进入代码仓库。</p>
+          <input x-ref="seedFile" type="file" accept=".jsonl,.json,application/json,text/plain" class="hidden" @change="selectSeedFile($event)">
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button type="button" @click="$refs.seedFile.click()" :disabled="seedImportBusy" class="tap rounded-2xl border border-zinc-800 bg-[#0a0a0b] px-4 py-2 text-xs text-zinc-100 disabled:opacity-40">选择 JSONL</button>
+            <button type="button" @click="importSeed()" :disabled="seedImportBusy || !seedItems.length" class="tap rounded-2xl bg-coral px-4 py-2 text-xs font-semibold text-zinc-950 disabled:opacity-40" x-text="seedImportBusy ? '正在导入…' : '导入到 ' + (namespace || 'default')"></button>
+          </div>
+          <p x-show="seedFileName" class="mt-2 break-all text-xs text-zinc-400" x-text="seedFileName + ' · ' + seedSummary"></p>
+          <p x-show="seedImportProgress" class="mt-2 text-xs text-zinc-400" x-text="seedImportProgress"></p>
+          <p x-show="seedImportResult" class="mt-2 whitespace-pre-wrap text-xs text-zinc-400" x-text="seedImportResult"></p>
+          <p class="mt-2 text-[11px] leading-5 text-zinc-500">重复导入时，带 fact_key 的记忆会更新，词典会覆盖同名词条，完全相同的珍贵记忆会跳过。</p>
         </article>
         <article class="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 shadow-sm">
           <div class="flex items-center justify-between gap-2">
@@ -1168,8 +1190,8 @@ function memoryAdmin() {
     page: 'today',
     moreView: 'precious',
     workerUrl: localStorage.getItem('aelios.admin.workerUrl') || location.origin,
-    apiKey: localStorage.getItem('aelios.admin.apiKey') || '',
-    savedApiKey: localStorage.getItem('aelios.admin.apiKey') || '',
+    apiKey: (typeof sessionStorage !== 'undefined' ? sessionStorage : localStorage).getItem('aelios.admin.apiKey') || '',
+    savedApiKey: (typeof sessionStorage !== 'undefined' ? sessionStorage : localStorage).getItem('aelios.admin.apiKey') || '',
     namespace: localStorage.getItem('aelios.admin.namespace') || 'default',
     theme: localStorage.getItem('aelios.admin.colorMode') || 'light',
     boot: {},
@@ -1192,6 +1214,12 @@ function memoryAdmin() {
     memoryCreateOpen: false,
     memoryDraft: { type: 'fact', content: '', fact_key: '', importance: 0.7, confidence: 0.85 },
     glossaryDraft: { term: '', definition: '', aliasesText: '' },
+    seedFileName: '',
+    seedItems: [],
+    seedSummary: '',
+    seedImportBusy: false,
+    seedImportProgress: '',
+    seedImportResult: '',
     debugOutput: '尚未运行维护操作',
     toast: '',
     saving: false,
@@ -1351,7 +1379,9 @@ function memoryAdmin() {
       this.clearSpaceData();
       this.memoryIdentities = [];
       this.savePrefs();
-      localStorage.setItem('aelios.admin.apiKey', this.apiKey || '');
+      const tokenStorage = typeof sessionStorage !== 'undefined' ? sessionStorage : localStorage;
+      tokenStorage.setItem('aelios.admin.apiKey', this.apiKey || '');
+      if (typeof localStorage.removeItem === 'function') localStorage.removeItem('aelios.admin.apiKey');
       this.savedApiKey = this.apiKey || '';
       this.notify(this.apiKey && this.apiKey.trim() ? 'Token 已保存' : 'Token 已清空');
       await this.loadMemoryIdentities();
@@ -1360,6 +1390,96 @@ function memoryAdmin() {
     clearToken() {
       this.apiKey = '';
       this.saveToken();
+    },
+    async selectSeedFile(event) {
+      const input = event && event.target;
+      const file = input && input.files && input.files[0];
+      this.seedFileName = '';
+      this.seedItems = [];
+      this.seedSummary = '';
+      this.seedImportProgress = '';
+      this.seedImportResult = '';
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        this.notify('种子文件不能超过 2 MB');
+        input.value = '';
+        return;
+      }
+      try {
+        const lines = (await file.text()).split(/\r?\n/).map(function(line) { return line.trim(); }).filter(Boolean);
+        if (!lines.length || lines.length > 500) throw new Error('文件需包含 1 到 500 条 JSONL 记录');
+        const items = lines.map(function(line, index) {
+          let item;
+          try { item = JSON.parse(line); }
+          catch (error) { throw new Error('第 ' + (index + 1) + ' 行不是有效 JSON'); }
+          if (!item || !['memory', 'precious', 'glossary'].includes(item.op)) {
+            throw new Error('第 ' + (index + 1) + ' 行 op 必须是 memory、precious 或 glossary');
+          }
+          if (item.op === 'memory' && (!(item.fact_key || '').trim() || !(item.content || '').trim())) {
+            throw new Error('第 ' + (index + 1) + ' 行 memory 缺少 fact_key 或 content');
+          }
+          if (item.op === 'precious' && !(item.content || '').trim()) {
+            throw new Error('第 ' + (index + 1) + ' 行 precious 缺少 content');
+          }
+          if (item.op === 'glossary' && (!(item.term || '').trim() || !(item.definition || '').trim())) {
+            throw new Error('第 ' + (index + 1) + ' 行 glossary 缺少 term 或 definition');
+          }
+          return item;
+        });
+        const counts = items.reduce(function(out, item) { out[item.op] = (out[item.op] || 0) + 1; return out; }, {});
+        this.seedFileName = file.name;
+        this.seedItems = items;
+        this.seedSummary = [counts.memory ? counts.memory + ' 条记忆' : '', counts.precious ? counts.precious + ' 条珍贵' : '', counts.glossary ? counts.glossary + ' 条词典' : ''].filter(Boolean).join('、');
+        this.notify('种子文件解析成功，请确认后导入');
+      } catch (error) {
+        input.value = '';
+        this.notify(error.message || '种子文件解析失败');
+      }
+    },
+    async importSeed() {
+      if (this.seedImportBusy || !this.seedItems.length) return;
+      if (!this.apiKey.trim()) { this.notify('请先填写 token'); return; }
+      const target = this.namespace || 'default';
+      if (!window.confirm('确认把 ' + this.seedItems.length + ' 条种子写入 ' + target + '？')) return;
+      this.seedImportBusy = true;
+      this.seedImportResult = '';
+      let written = 0, skipped = 0, failed = 0;
+      const errors = [];
+      const existingPrecious = new Set((this.precious || []).map(function(item) { return (item.content || '').trim(); }));
+      for (let index = 0; index < this.seedItems.length; index += 1) {
+        const item = this.seedItems[index];
+        this.seedImportProgress = '正在处理 ' + (index + 1) + ' / ' + this.seedItems.length;
+        try {
+          if (item.op === 'precious') {
+            const content = (item.content || '').trim();
+            if (existingPrecious.has(content)) { skipped += 1; continue; }
+            await this.request(this.withNamespace('/v1/precious'), {
+              method: 'POST',
+              body: JSON.stringify({ namespace: target, content: content, context_message_ids: Array.isArray(item.context_message_ids) ? item.context_message_ids : [], source: item.source || 'human' })
+            });
+            existingPrecious.add(content);
+          } else if (item.op === 'glossary') {
+            await this.request(this.withNamespace('/v1/glossary'), {
+              method: 'POST',
+              body: JSON.stringify({ namespace: target, term: item.term, aliases: Array.isArray(item.aliases) ? item.aliases : [], definition: item.definition, examples: Array.isArray(item.examples) ? item.examples : [] })
+            });
+          } else {
+            await this.request(this.withNamespace('/v1/memories'), {
+              method: 'POST',
+              body: JSON.stringify({ namespace: target, fact_key: item.fact_key, type: item.type || 'fact', content: item.content, importance: Number.isFinite(Number(item.importance)) ? Number(item.importance) : 0.7, confidence: Number.isFinite(Number(item.confidence)) ? Number(item.confidence) : 0.85, tags: Array.isArray(item.tags) ? item.tags : [], source: item.source || 'manual', source_message_ids: Array.isArray(item.source_message_ids) ? item.source_message_ids : [], valid_as_of: item.valid_as_of || undefined, authored_by: item.authored_by || undefined, response_tendency: item.response_tendency || undefined })
+            });
+          }
+          written += 1;
+        } catch (error) {
+          failed += 1;
+          if (errors.length < 3) errors.push('第 ' + (index + 1) + ' 条：' + (error.message || '失败'));
+        }
+      }
+      this.seedImportProgress = '';
+      this.seedImportResult = '完成：写入 ' + written + '，跳过 ' + skipped + '，失败 ' + failed + (errors.length ? '\n' + errors.join('\n') : '');
+      await this.reloadAll();
+      this.seedImportBusy = false;
+      this.notify(failed ? '导入完成，但有失败项目' : '种子导入完成');
     },
     applyTheme() {
       document.documentElement.dataset.theme = this.theme || 'light';
