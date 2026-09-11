@@ -107,6 +107,13 @@ test("identity-scoped MCP binds tool calls to the configured assistant namespace
 
   const missing = await run("/missing/mcp", body);
   assert.equal(missing.response.status, 403);
+
+  body.params.arguments.messages[0].content = "default MCP identity probe";
+  const fallback = await run("/mcp", body);
+  assert.equal(fallback.response.status, 200, fallback.text);
+  const fallbackRow = sqlite.prepare("SELECT namespace FROM messages WHERE content = ?")
+    .get("default MCP identity probe") as { namespace: string };
+  assert.equal(fallbackRow.namespace, "partner-a");
 });
 
 test("migrations, native chat recall, namespace isolation, original text and Queue dedup", async () => {
