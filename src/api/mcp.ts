@@ -18,6 +18,7 @@ import {
 import { exportMemories } from "../memory/export";
 import { buildBootPackage, isV2Enabled, runRecall } from "../memory/v2/recall";
 import { readDreamTimeZoneFromEnv } from "../memory/dailyDigest";
+import { findIdentity, identityNamespace, loadConfig } from "../gateway/config";
 import { withImpressionDisclaimer } from "../memory/impression";
 import { getIsoWeekLabelForDateLabel } from "../memory/weeklyRollup";
 import { searchMemories, toMemoryApiRecord } from "../memory/search";
@@ -751,7 +752,12 @@ async function handleRpc(
   return rpcError(request.id, -32601, "Method not found");
 }
 
-export async function handleMcp(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+export async function handleMcp(
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext,
+  identitySlug: string | null = null
+): Promise<Response> {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204 });
   }
@@ -772,6 +778,13 @@ export async function handleMcp(request: Request, env: Env, ctx: ExecutionContex
   const auth = await authenticate(withTokenQuery(request), env);
   if (!auth.ok) return rpcErrorResponse(null, -32001, "Unauthorized", 401);
 
+  let profile = auth.profile;
+  if (identitySlug) {
+    const identity = findIdentity(await loadConfig(env), auth, identitySlug);
+    if (!identity) return rpcErrorResponse(null, -32003, "Identity not available for this key", 403);
+    profile = { ...auth.profile, namespace: identityNamespace(identity) };
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -784,7 +797,7 @@ export async function handleMcp(request: Request, env: Env, ctx: ExecutionContex
       await Promise.all(
         body
           .filter((item): item is JsonRpcRequest => isRecord(item))
-          .map((item) => handleRpc(item, env, ctx, auth.profile))
+          .map((item) => handleRpc(item, env, ctx, profile))
       )
     ).filter((item): item is Record<string, unknown> => item !== null);
     return results.length > 0 ? json(results) : new Response(null, { status: 202 });
@@ -792,7 +805,7 @@ export async function handleMcp(request: Request, env: Env, ctx: ExecutionContex
 
   if (!isRecord(body)) return rpcErrorResponse(null, -32600, "Invalid Request", 400);
 
-  const result = await handleRpc(body, env, ctx, auth.profile);
+  const result = await handleRpc(body, env, ctx, profile);
   return result ? json(result) : new Response(null, { status: 202 });
 }
 
