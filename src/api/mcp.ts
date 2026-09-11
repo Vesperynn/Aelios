@@ -779,9 +779,11 @@ export async function handleMcp(
   if (!auth.ok) return rpcErrorResponse(null, -32001, "Unauthorized", 401);
 
   let profile = auth.profile;
-  if (identitySlug) {
-    const identity = findIdentity(await loadConfig(env), auth, identitySlug);
-    if (!identity) return rpcErrorResponse(null, -32003, "Identity not available for this key", 403);
+  const identity = findIdentity(await loadConfig(env), auth, identitySlug);
+  if (identitySlug && !identity) {
+    return rpcErrorResponse(null, -32003, "Identity not available for this key", 403);
+  }
+  if (identity) {
     profile = { ...auth.profile, namespace: identityNamespace(identity) };
   }
 
