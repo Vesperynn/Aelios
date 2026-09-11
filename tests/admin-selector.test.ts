@@ -11,7 +11,7 @@ function panel(preferences: Record<string, string> = {}) {
       setItem: (key: string, value: string) => storage.set(key, value) },
     location: { origin: 'https://aelios.test' },
     document: { documentElement: { dataset: {} } },
-    window: { setTimeout() {} }
+    window: { setTimeout() {}, confirm: () => true }
   });
   app.icons = () => {};
   app.apiKey = 'owner';
@@ -93,6 +93,32 @@ test('saving the first token loads identities instead of locking the panel to de
   await app.saveToken();
   assert.equal(app.selectedIdentity, 'danjiu');
   assert.equal(app.namespace, 'danjiu');
+});
+
+test('local JSONL seed import targets the selected namespace without uploading the file itself', async () => {
+  const { app } = panel({ 'aelios.admin.namespace': 'wynn-yuzu' });
+  app.namespace = 'wynn-yuzu';
+  app.apiKey = 'owner';
+  app.precious = [];
+  const calls: Array<{ path: string; body: any }> = [];
+  app.request = async (path: string, options: any = {}) => {
+    calls.push({ path, body: options.body ? JSON.parse(options.body) : null });
+    return { data: {} };
+  };
+  app.reloadAll = async () => {};
+  const content = [
+    JSON.stringify({ op: 'precious', content: '长期锚点' }),
+    JSON.stringify({ op: 'glossary', term: '柚子', definition: '用户称呼' }),
+    JSON.stringify({ op: 'memory', fact_key: 'relationship.continuity', type: 'relationship', content: '连续关系' })
+  ].join('\n');
+  await app.selectSeedFile({ target: { files: [{ name: 'seed.jsonl', size: content.length, text: async () => content }] } });
+  assert.equal(app.seedItems.length, 3);
+  assert.match(app.seedSummary, /1 条记忆/);
+  await app.importSeed();
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(call => call.path.includes('namespace=wynn-yuzu')));
+  assert.ok(calls.every(call => call.body.namespace === 'wynn-yuzu'));
+  assert.match(app.seedImportResult, /写入 3/);
 });
 
 test('gateway editor round-trips speaker names for dream writing', async () => {
