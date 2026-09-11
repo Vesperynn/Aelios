@@ -109,6 +109,12 @@ API Key 一律填 `CHATBOX_API_KEY`。模型名写成 `厂商/模型`，比如 `
 https://<Worker 地址>/mcp?token=<CHATBOX_API_KEY>
 ```
 
+有多个助手或记忆空间时，推荐用身份路径把 MCP 锁定到对应助手的写入空间：
+
+```
+https://<Worker 地址>/<助手 slug>/mcp?token=<CHATBOX_API_KEY>
+```
+
 想让 Claude Code 每条消息自动召回、批量写回，用仓库里的 Hook：[`integrations/claude-code/`](./integrations/claude-code/README.md)。
 
 **看图**
