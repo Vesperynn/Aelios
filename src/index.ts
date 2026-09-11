@@ -146,8 +146,9 @@ export default {
       return handleHealth(env);
     }
 
-    if (url.pathname === "/mcp" || url.pathname === "/memory-mcp") {
-      return handleMcp(request, env, ctx);
+    const identityMcp = url.pathname.match(/^\/([a-zA-Z0-9][a-zA-Z0-9._-]{0,63})\/mcp$/);
+    if (url.pathname === "/mcp" || url.pathname === "/memory-mcp" || identityMcp) {
+      return handleMcp(request, env, ctx, identityMcp?.[1] ?? null);
     }
 
     if (url.pathname.startsWith("/v1/memories")) {
