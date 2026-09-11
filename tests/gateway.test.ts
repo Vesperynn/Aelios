@@ -85,6 +85,30 @@ function precious(namespace: string, content: string) {
   sqlite.prepare("INSERT INTO precious (id, namespace, content, created_at) VALUES (?, ?, ?, ?)").run(id, namespace, content, "2026-09-06");
 }
 
+test("identity-scoped MCP binds tool calls to the configured assistant namespace", async () => {
+  const body = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: {
+      name: "memory_ingest",
+      arguments: {
+        messages: [{ role: "user", content: "identity-scoped MCP probe" }],
+        auto_extract: false
+      }
+    }
+  };
+
+  const { response, text } = await run("/partner/mcp", body);
+  assert.equal(response.status, 200, text);
+  const row = sqlite.prepare("SELECT namespace FROM messages WHERE content = ?")
+    .get("identity-scoped MCP probe") as { namespace: string };
+  assert.equal(row.namespace, "partner-a");
+
+  const missing = await run("/missing/mcp", body);
+  assert.equal(missing.response.status, 403);
+});
+
 test("migrations, native chat recall, namespace isolation, original text and Queue dedup", async () => {
   precious("partner-a", "喜欢 Cloudflare"); precious("partner-a", "昨天吃了番茄炒蛋");
   precious("partner-b", "other identity private memory");
