@@ -116,6 +116,31 @@ test("identity-scoped MCP binds tool calls to the configured assistant namespace
   assert.equal(fallbackRow.namespace, "partner-a");
 });
 
+
+test("primary key honors an explicitly requested configured identity namespace", async () => {
+  const configured = await run("/v1/memories?namespace=partner-a", {
+    namespace: "partner-a",
+    fact_key: "probe.configured",
+    type: "fact",
+    content: "configured namespace probe"
+  });
+  assert.equal(configured.response.status, 201, configured.text);
+  const configuredRow = sqlite.prepare("SELECT namespace FROM memories WHERE content = ?")
+    .get("configured namespace probe") as { namespace: string };
+  assert.equal(configuredRow.namespace, "partner-a");
+
+  const unconfigured = await run("/v1/memories?namespace=not-authorized", {
+    namespace: "not-authorized",
+    fact_key: "probe.unconfigured",
+    type: "fact",
+    content: "unconfigured namespace probe"
+  });
+  assert.equal(unconfigured.response.status, 201, unconfigured.text);
+  const unconfiguredRow = sqlite.prepare("SELECT namespace FROM memories WHERE content = ?")
+    .get("unconfigured namespace probe") as { namespace: string };
+  assert.equal(unconfiguredRow.namespace, "default");
+});
+
 test("migrations, native chat recall, namespace isolation, original text and Queue dedup", async () => {
   precious("partner-a", "喜欢 Cloudflare"); precious("partner-a", "昨天吃了番茄炒蛋");
   precious("partner-b", "other identity private memory");
